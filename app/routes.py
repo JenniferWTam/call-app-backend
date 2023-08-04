@@ -1,18 +1,24 @@
-from flask import Flask, request, jsonify
+from flask import Blueprint, Flask, request, jsonify
 from dotenv import load_dotenv
-from app import app
+from app import routes
 import requests
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.rest import Client
 import os
 from datetime import datetime
 import requests
+from . import route_bp
 
-load_dotenv()
 
-app = Flask(__name__)
+OPENAI_API_KEY=os.environ.get("OPENAI_API_KEY")
+TWILIO_SID=os.environ.get("TWILIO_SID")
+TWILIO_AUTH_TOKEN=os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER=os.environ.get("TWILIO_PHONE_NUMBER")
 
-@app.route('/make_reservation', methods=['POST'])
+
+route_bp = Blueprint('route_bp', __name__, url_prefix="")
+
+@routes.route('/make_reservation', methods=['POST'])
 def make_reservation():
     try:
         data = request.get_json()
@@ -32,7 +38,6 @@ def make_reservation():
         # Generate prompt using OpenAI
         prompt = f"Hello, {user_name} would like to make a reservation for {party_size} at {reservation_time.strftime('%Y-%m-%d %H:%M')}. Press one if that is available, press two if you're not available, press three if you would like some more time."
 
-        # Rest of your backend code remains unchanged...
         
         # Call OpenAI to get the reservation conversation
         headers = {
@@ -46,7 +51,7 @@ def make_reservation():
         })
 
         if response.status_code != 200:
-            print(response.json())  # Add this line to print the response content
+            print(response.json())  # Print response content
             return jsonify({"status": "error", "message": "Failed to get response from OpenAI"}), 500
 
         data = response.json()
@@ -56,7 +61,10 @@ def make_reservation():
 
         reply = data["choices"][0]["text"].strip()
 
-        conversation = []
+        conversation = [
+            {"role": "system", "content": "You are a friendly reservation assistant. Help {user_name} make a reservation at {re}"},
+            {"role": "user", "content": prompt}
+        ]
 
         # Initiate the conversation with the initial prompt
         response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json={
@@ -83,7 +91,7 @@ def make_reservation():
         # Initiate the Twilio call to the restaurant
         client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
 
-        # Replace this with the restaurant's phone number on file
+        # Restaurants phone number - using mine for testing
         restaurant_phone_number = "2489461263"
 
         call = client.calls.create(
@@ -104,4 +112,4 @@ def make_reservation():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    routes.run(debug=True)
